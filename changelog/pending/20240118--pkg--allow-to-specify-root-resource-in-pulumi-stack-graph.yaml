@@ -1,0 +1,4 @@
+changes:
+- type: feat
+  scope: pkg
+  description: Allow to specify root resource in pulumi stack graph

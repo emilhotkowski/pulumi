@@ -17,6 +17,7 @@ package main
 import (
 	"bytes"
 	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/pulumi/pulumi/pkg/v3/graph/dotconv"
@@ -94,9 +95,10 @@ func TestStackGraphCmd(t *testing.T) {
 					Type: "pulumi:provider:random",
 				},
 				{
-					URN:  parent,
-					ID:   "parent-id",
-					Type: "random:index/randomPet:RandomPet",
+					URN:          parent,
+					ID:           "parent-id",
+					Type:         "random:index/randomPet:RandomPet",
+					Dependencies: []resource.URN{child},
 				},
 				{
 					URN:    child,
@@ -149,5 +151,45 @@ func TestStackGraphCmd(t *testing.T) {
 				require.Contains(t, dotOutput, fmt.Sprintf("[label=\"%s\"]", label))
 			}
 		})
+
+		testCases := []struct {
+			rootResourceURN string
+			expectedLabels  []string
+		}{
+			{
+				rootResourceURN: string(parent),
+				expectedLabels: []string{
+					"parent", "child",
+				},
+			},
+			{
+				rootResourceURN: "wrong_urn",
+				expectedLabels:  []string{},
+			},
+		}
+
+		for _, tt := range testCases {
+			tt := tt
+			t.Run(tt.rootResourceURN, func(t *testing.T) {
+				t.Parallel()
+				opts := graphCommandOptions{
+					shortNodeName:   true,
+					rootResourceURN: tt.rootResourceURN,
+				}
+				dg := makeDependencyGraph(&snap, &opts)
+
+				var outputBuf bytes.Buffer
+				require.NoError(t, dotconv.Print(dg, &outputBuf, opts.dotFragment))
+
+				dotOutput := outputBuf.String()
+
+				numberOfLabels := strings.Count(dotOutput, "label")
+				require.Equal(t, len(tt.expectedLabels), numberOfLabels)
+
+				for _, label := range tt.expectedLabels {
+					require.Contains(t, dotOutput, fmt.Sprintf("[label=\"%s\"]", label))
+				}
+			})
+		}
 	})
 }

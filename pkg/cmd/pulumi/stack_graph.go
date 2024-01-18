@@ -50,6 +50,9 @@ type graphCommandOptions struct {
 	// A DOT fragment that will be inserted at the top of the digraph element. This
 	// can be used for styling the graph elements, setting graph properties etc.")
 	dotFragment string
+
+	// Root resource. If specified the graph is generated for that resource and its dependencies.
+	rootResourceURN string
 }
 
 func newStackGraphCmd() *cobra.Command {
@@ -116,6 +119,8 @@ func newStackGraphCmd() *cobra.Command {
 	cmd.PersistentFlags().StringVar(&cmdOpts.dotFragment, "dot-fragment", "",
 		"An optional DOT fragment that will be inserted at the top of the digraph element. "+
 			"This can be used for styling the graph elements, setting graph properties etc.")
+	cmd.PersistentFlags().StringVar(&cmdOpts.rootResourceURN, "root-resource-urn", "",
+		"If specified, the graph is generated for that resource and its dependencies.")
 	return cmd
 }
 
@@ -245,7 +250,9 @@ func makeDependencyGraph(snapshot *deploy.Snapshot, opts *graphCommandOptions) *
 		vertices: make(map[resource.URN]*dependencyVertex),
 	}
 
-	for _, resource := range snapshot.Resources {
+	resources := selectResources(snapshot, opts)
+
+	for _, resource := range resources {
 		vertex := &dependencyVertex{
 			graph:        dg,
 			resource:     resource,
@@ -292,4 +299,32 @@ func makeDependencyGraph(snapshot *deploy.Snapshot, opts *graphCommandOptions) *
 	}
 
 	return dg
+}
+
+// Select resources for the graph to print, either all or a selected resource with its all dependencies
+func selectResources(snapshot *deploy.Snapshot, opts *graphCommandOptions) []*resource.State {
+	if opts.rootResourceURN == "" {
+		return snapshot.Resources
+	}
+
+	resources := make([]*resource.State, 0)
+	resourceMap := make(map[resource.URN]*resource.State)
+	for _, resource := range snapshot.Resources {
+		resourceMap[resource.URN] = resource
+	}
+
+	root, rootExisits := resourceMap[resource.URN(opts.rootResourceURN)]
+	if rootExisits {
+		resources = append(resources, root)
+		for i := 0; i < len(resources); i++ {
+			for _, dependencyURN := range resources[i].Dependencies {
+				dependency, dependencyExists := resourceMap[dependencyURN]
+				if dependencyExists {
+					resources = append(resources, dependency)
+				}
+			}
+		}
+	}
+
+	return resources
 }
